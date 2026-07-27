@@ -23,3 +23,5 @@ dist-desktop
 *.njsproj
 *.sln
 *.sw?
+icon.icns
+icon.iconset/
