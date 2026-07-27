@@ -3,36 +3,97 @@ import {
   BookOpen, 
   Columns, 
   Edit3, 
-  Sidebar as SidebarIcon, 
   Sun, 
   Moon, 
   Download, 
   Upload, 
-  ListOrdered
+  X,
+  Plus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  FileText,
+  Globe,
+  Printer,
+  HelpCircle,
+  ChevronDown,
+  FilePlus,
+  Save,
+  Languages
 } from 'lucide-react';
-import { sampleMarkdown } from './sampleDocument';
+import { defaultDocuments } from './sampleDocument';
 import { SidebarToc } from './components/SidebarToc';
 import { MermaidViewer } from './components/MermaidViewer';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { translations } from './translations';
+
+const availableLanguages = [
+  { code: 'zh', name: '中文', flag: '🇨🇳' },
+  { code: 'en', name: 'English', flag: '🇺🇸' },
+];
 
 export default function App() {
-  const [markdown, setMarkdown] = useState(sampleMarkdown);
+  const [documents, setDocuments] = useState(() => 
+    defaultDocuments.map((doc, i) => ({ ...doc, id: `doc-${i}` }))
+  );
+  const [activeTabId, setActiveTabId] = useState('doc-0');
   const [viewMode, setViewMode] = useState('read');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDark, setIsDark] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showSyntaxHelp, setShowSyntaxHelp] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
+  const [lang, setLang] = useState('zh');
+  const t = (key) => translations[lang]?.[key] || translations['zh']?.[key] || key;
+
+  // Notify Electron main process when language changes
+  useEffect(() => {
+    if (window.electronAPI?.setLanguage) {
+      window.electronAPI.setLanguage(lang);
+    }
+  }, [lang]);
   const [headings, setHeadings] = useState([]);
   const [activeHeadingId, setActiveHeadingId] = useState('');
-  const [fileName, setFileName] = useState('促销预算管理.md');
 
   const previewRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  // Apply dark theme attribute
+  const activeDoc = documents.find(d => d.id === activeTabId) || documents[0];
+  const markdown = activeDoc?.content || '';
+  const fileName = activeDoc?.name || '未命名.md';
+
+  const setMarkdown = useCallback((updater) => {
+    setDocuments(prev => prev.map(doc => {
+      if (doc.id !== activeTabId) return doc;
+      const newContent = typeof updater === 'function' ? updater(doc.content) : updater;
+      return { ...doc, content: newContent };
+    }));
+  }, [activeTabId]);
+
+
+  // Insert markdown snippet at cursor position in editor
+  const insertAtCursor = useCallback((snippet) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = markdown.substring(0, start);
+    const after = markdown.substring(end);
+    const inserted = (start > 0 && !before.endsWith('\n') ? '\n' : '') + snippet + '\n';
+    setMarkdown(before + inserted + after);
+    // Restore focus and set cursor after inserted text
+    requestAnimationFrame(() => {
+      ta.focus();
+      const newPos = before.length + inserted.length;
+      ta.setSelectionRange(newPos, newPos);
+    });
+  }, [markdown]);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
-  // Extract headings from Markdown (with duplicate ID handling)
   useEffect(() => {
     const lines = markdown.split('\n');
     const extracted = [];
@@ -45,7 +106,6 @@ export default function App() {
         const rawTitle = match[2].trim();
         const title = rawTitle.replace(/[*_~`]/g, '');
         let id = 'heading-' + title.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-');
-        // Handle duplicate heading IDs
         if (idCount[id] !== undefined) {
           idCount[id] += 1;
           id = `${id}-${idCount[id]}`;
@@ -57,9 +117,8 @@ export default function App() {
     });
 
     setHeadings(extracted);
-  }, [markdown]);
+  }, [markdown, activeTabId]);
 
-  // Scroll Spy: highlight active heading on scroll
   useEffect(() => {
     const previewEl = previewRef.current;
     if (!previewEl || headings.length === 0) return;
@@ -90,7 +149,13 @@ export default function App() {
     return () => previewEl.removeEventListener('scroll', handleScroll);
   }, [headings, viewMode]);
 
-  // Scroll to heading smoothly within preview pane
+  useEffect(() => {
+    const previewEl = previewRef.current;
+    if (previewEl) {
+      previewEl.scrollTop = 0;
+    }
+  }, [activeTabId]);
+
   const handleHeadingClick = useCallback((id) => {
     setActiveHeadingId(id);
     const element = document.getElementById(id);
@@ -103,31 +168,40 @@ export default function App() {
     }
   }, []);
 
-  // Insert [toc] at current cursor or top
-  const handleInsertToc = useCallback(() => {
-    if (!markdown.includes('[toc]')) {
-      setMarkdown((prev) => '# 目录\n\n[toc]\n\n' + prev);
-    }
-  }, [markdown]);
+  const handleCloseTab = useCallback((tabId, e) => {
+    e?.stopPropagation();
+    setDocuments(prev => {
+      if (prev.length <= 1) return prev;
+      const idx = prev.findIndex(d => d.id === tabId);
+      const next = prev.filter(d => d.id !== tabId);
+      if (tabId === activeTabId) {
+        const newIdx = Math.min(idx, next.length - 1);
+        setActiveTabId(next[newIdx]?.id || '');
+      }
+      return next;
+    });
+  }, [activeTabId]);
 
-  // Handle local MD file upload
   const handleFileUpload = useCallback((e) => {
     const file = e.target.files?.[0];
     if (file) {
-      setFileName(file.name);
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
-          setMarkdown(event.target.result.toString());
+          const newDoc = {
+            id: `doc-${Date.now()}`,
+            name: file.name,
+            content: event.target.result.toString()
+          };
+          setDocuments(prev => [...prev, newDoc]);
+          setActiveTabId(newDoc.id);
         }
       };
       reader.readAsText(file);
-      // Reset input so same file can be re-uploaded
       e.target.value = '';
     }
   }, []);
 
-  // Download file
   const handleDownload = useCallback(() => {
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -138,13 +212,92 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
   }, [markdown, fileName]);
 
-  // Build TOC HTML string (no indentation to avoid marked code-block parsing)
-  const buildTocHtml = useCallback(() => {
-    const items = headings.map(h => `<li class="toc-level-${h.level}"><a href="#${h.id}">${h.title}</a></li>`).join('');
-    return `<div class="inline-toc-box"><div class="inline-toc-title">📌 文档目录树</div><ul class="inline-toc-list">${items}</ul></div>`;
-  }, [headings]);
+  // Export as HTML
+  const handleExportHTML = useCallback(() => {
+    const fullHtml = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${fileName.replace('.md', '')}</title>
+  <style>
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.7; }
+    h1,h2,h3,h4 { margin-top: 1.5em; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre { background: #f5f5f5; padding: 16px; border-radius: 8px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+    th { background: #f5f5f5; }
+    blockquote { border-left: 4px solid #e8850c; padding-left: 16px; margin-left: 0; color: #666; }
+  </style>
+</head>
+<body>${DOMPurify.sanitize(marked.parse(markdown), { ADD_ATTR: ['style'], ADD_TAGS: ['div','ul','li','a','span'] })}</body>
+</html>`;
+    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName.replace('.md', '.html');
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    setShowExportMenu(false);
+  }, [markdown, fileName]);
 
-  // Custom parser to split Mermaid code blocks from markdown
+  // Export as PDF (via print dialog)
+  const handleExportPDF = useCallback(() => {
+    const printWindow = window.open('', '_blank');
+    const htmlContent = DOMPurify.sanitize(marked.parse(markdown), { ADD_ATTR: ['style'], ADD_TAGS: ['div','ul','li','a','span'] });
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>${fileName}</title>
+      <style>body{font-family:-apple-system,"PingFang SC",sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#1a1a1a;line-height:1.7}
+      h1,h2,h3{margin-top:1.5em}code{background:#f5f5f5;padding:2px 6px;border-radius:4px}
+      pre{background:#f5f5f5;padding:16px;border-radius:8px;overflow-x:auto}
+      table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px 12px}
+      th{background:#f5f5f5}blockquote{border-left:4px solid #e8850c;padding-left:16px;margin-left:0;color:#666}
+      @media print{body{margin:0}}</style></head><body>${htmlContent}</body></html>`);
+    printWindow.document.close();
+    printWindow.onload = () => { printWindow.print(); };
+    setShowExportMenu(false);
+  }, [fileName, markdown]);
+
+  // New blank document
+  const handleNewDoc = useCallback(() => {
+    const newDoc = {
+      id: `doc-${Date.now()}`,
+      name: '未命名.md',
+      content: t('newDoc.content')
+    };
+    setDocuments(prev => [...prev, newDoc]);
+    setActiveTabId(newDoc.id);
+    setShowFileMenu(false);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          // Save As - prompt for filename
+          const name = prompt(t('saveAs.prompt'), fileName);
+          if (name) {
+            const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url; link.download = name.endsWith('.md') ? name : name + '.md';
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+          }
+        } else {
+          // Save - download
+          handleDownload();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [markdown, fileName, handleDownload]);
+
+
   const renderedContent = useMemo(() => {
     const mdContent = markdown;
     const blocks = [];
@@ -179,9 +332,6 @@ export default function App() {
           });
         });
 
-        if (htmlStr.includes('[toc]')) {
-          htmlStr = htmlStr.replace('[toc]', buildTocHtml());
-        }
 
         const parsedHtml = DOMPurify.sanitize(marked.parse(htmlStr), {
           ADD_ATTR: ['style'],
@@ -197,28 +347,18 @@ export default function App() {
         );
       }
     });
-  }, [markdown, isDark, headings, buildTocHtml]);
+  }, [markdown, isDark, headings]);
+
+
 
   return (
     <div className="app-container">
-      {/* Top Navbar - draggable region for Electron */}
+      {/* Top Navbar - Claude style, draggable for Electron */}
       <header className="top-nav">
         <div className="brand">
-          <button 
-            className={`icon-btn ${isSidebarOpen ? 'active' : ''}`}
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            title="切换侧边栏目录 (Cmd+Shift+J)"
-          >
-            <SidebarIcon size={18} />
-          </button>
-
-          <div className="brand-logo">M</div>
+          <img src="./owlmark-icon.png" alt="OwlMark" className="brand-icon" />
           <div className="brand-info">
-            <div className="brand-name">
-              MarkText Enhanced
-              <span className="brand-badge">v2.0</span>
-            </div>
-            <span className="file-path">{fileName}</span>
+            <div className="brand-name">OwlMark</div>
           </div>
         </div>
 
@@ -230,76 +370,188 @@ export default function App() {
               onClick={() => setViewMode('read')}
             >
               <BookOpen size={14} />
-              阅读
+              {t('nav.read')}
             </button>
             <button 
               className={`btn-tab ${viewMode === 'split' ? 'active' : ''}`}
               onClick={() => setViewMode('split')}
             >
               <Columns size={14} />
-              分栏
+              {t('nav.split')}
             </button>
             <button 
               className={`btn-tab ${viewMode === 'edit' ? 'active' : ''}`}
               onClick={() => setViewMode('edit')}
             >
               <Edit3 size={14} />
-              编辑
+              {t('nav.edit')}
             </button>
           </div>
 
-          <button className="icon-btn" onClick={handleInsertToc} title="在文档中插入 [toc] 目录表">
-            <ListOrdered size={16} />
+
+          {/* File menu */}
+          <div className="nav-dropdown" style={{ position: 'relative' }}>
+            <button className="btn-tab" onClick={() => { setShowFileMenu(!showFileMenu); setShowExportMenu(false); setShowLangMenu(false); }}>
+              <Save size={14} />
+              {t('nav.save')}
+              <ChevronDown size={11} style={{ opacity: 0.5 }} />
+            </button>
+            {showFileMenu && (
+              <div className="nav-dropdown-menu" onClick={() => setShowFileMenu(false)}>
+                <button className="dropdown-item" onClick={handleNewDoc}>
+                  <FilePlus size={14} /> {t('file.newDoc')}
+                </button>
+                <label className="dropdown-item" style={{ cursor: 'pointer' }}>
+                  <Upload size={14} /> {t('file.open')}
+                  <input type="file" accept=".md,.markdown,.txt" onChange={handleFileUpload} style={{ display: 'none' }} />
+                </label>
+                <div className="dropdown-divider" />
+                <button className="dropdown-item" onClick={handleDownload}>
+                  <Download size={14} /> {t('file.saveMd')} <span className="shortcut">⌘S</span>
+                </button>
+                <button className="dropdown-item" onClick={() => {
+                  const name = prompt(t('saveAs.prompt'), fileName);
+                  if (name) {
+                    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url; link.download = name.endsWith('.md') ? name : name + '.md';
+                    link.click(); setTimeout(() => URL.revokeObjectURL(url), 100);
+                  }
+                  setShowFileMenu(false);
+                }}>
+                  <Download size={14} /> {t('file.saveAsMd')} <span className="shortcut">⇧⌘S</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Export menu */}
+          <div className="nav-dropdown" style={{ position: 'relative' }}>
+            <button className="btn-tab" onClick={() => { setShowExportMenu(!showExportMenu); setShowFileMenu(false); setShowLangMenu(false); }}>
+              <Download size={14} />
+              {t('nav.export')}
+              <ChevronDown size={11} style={{ opacity: 0.5 }} />
+            </button>
+            {showExportMenu && (
+              <div className="nav-dropdown-menu">
+                <button className="dropdown-item" onClick={handleExportPDF}>
+                  <Printer size={14} /> {t('export.pdf')}
+                </button>
+                <button className="dropdown-item" onClick={handleExportHTML}>
+                  <Globe size={14} /> {t('export.html')}
+                </button>
+                <div className="dropdown-divider" />
+                <button className="dropdown-item" onClick={handleDownload}>
+                  <FileText size={14} /> {t('export.md')}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Syntax help */}
+          <button className="btn-tab" onClick={() => setShowSyntaxHelp(!showSyntaxHelp)} title="Markdown 语法速查">
+            <HelpCircle size={14} />
+            {t('nav.syntax')}
           </button>
 
-          <label className="icon-btn" title="打开本地 MD 文件" style={{ cursor: 'pointer' }}>
-            <Upload size={16} />
-            <input type="file" accept=".md,.markdown,.txt" onChange={handleFileUpload} style={{ display: 'none' }} />
-          </label>
+          <div className="nav-dropdown" style={{ position: 'relative' }}>
+            <button className="btn-tab" onClick={() => { setShowLangMenu(!showLangMenu); setShowFileMenu(false); setShowExportMenu(false); }}>
+              <Languages size={14} />
+              {availableLanguages.find(l => l.code === lang)?.name || lang}
+              <ChevronDown size={11} style={{ opacity: 0.5 }} />
+            </button>
+            {showLangMenu && (
+              <div className="nav-dropdown-menu" style={{ minWidth: '140px' }}>
+                {availableLanguages.map(l => (
+                  <button 
+                    key={l.code}
+                    className={`dropdown-item ${lang === l.code ? 'active' : ''}`}
+                    onClick={() => { setLang(l.code); setShowLangMenu(false); }}
+                  >
+                    <span style={{ marginRight: '8px' }}>{l.flag}</span>
+                    {l.name}
+                    {lang === l.code && <span style={{ marginLeft: 'auto', color: 'var(--accent-color)' }}>✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <button className="icon-btn" onClick={handleDownload} title="导出/下载 .md 文件">
-            <Download size={16} />
-          </button>
-
-          <button className="icon-btn" onClick={() => setIsDark(!isDark)} title="切换主题">
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          <button className="btn-tab" onClick={() => setIsDark(!isDark)} title="切换主题">
+            {isDark ? <Sun size={14} /> : <Moon size={14} />}
+            {isDark ? t('nav.light') : t('nav.dark')}
           </button>
         </div>
       </header>
 
+      {/* Document Tabs Bar - with sidebar toggle at position 1 */}
+      <div className="doc-tabs">
+        <button
+          className={`doc-tab-toggle ${isSidebarOpen ? 'open' : ''}`}
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
+        >
+          {isSidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        </button>
+
+        <div className="doc-tabs-divider" />
+
+        {documents.map(doc => (
+          <div
+            key={doc.id}
+            className={`doc-tab ${doc.id === activeTabId ? 'active' : ''}`}
+            onClick={() => setActiveTabId(doc.id)}
+          >
+            <span className="doc-tab-name">{doc.name}</span>
+            {documents.length > 1 && (
+              <button
+                className="doc-tab-close"
+                onClick={(e) => handleCloseTab(doc.id, e)}
+                title={t("tab.close")}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+        <label className="doc-tab doc-tab-add" title={t("tab.newFile")} style={{ cursor: 'pointer' }}>
+          <Plus size={14} />
+          <input type="file" accept=".md,.markdown,.txt" onChange={handleFileUpload} style={{ display: 'none' }} />
+        </label>
+      </div>
+
       {/* Main Container */}
       <div className="main-body">
-        {/* Left TOC Sidebar */}
         <SidebarToc
           headings={headings}
           activeId={activeHeadingId}
           onHeadingClick={handleHeadingClick}
           isCollapsed={!isSidebarOpen}
+          t={t}
         />
 
-        {/* Editor & Preview Workspace */}
         <main className="workspace">
-          {/* Editor Pane (Shown in Edit & Split mode) */}
           {(viewMode === 'edit' || viewMode === 'split') && (
             <div className="editor-pane">
               <div className="editor-toolbar">
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>源码编辑器</span>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>{fileName}</span>
                 <span style={{ flex: 1 }}></span>
-                <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n# 新标题')}>+ 标题</button>
-                <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n| 列1 | 列2 |\n|---|---|\n| 值1 | 值2 |')}>+ 表格</button>
-                <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n```mermaid\ngraph TD\n    A["开始"] --> B["流程节点"]\n```')}>+ 流程图</button>
+                <button className="tool-btn" onClick={() => insertAtCursor('# 新标题')}>{t('editor.title')}</button>
+                <button className="tool-btn" onClick={() => insertAtCursor('| 列1 | 列2 |\n|---|---|\n| 值1 | 值2 |')}>{t('editor.table')}</button>
+                <button className="tool-btn" onClick={() => insertAtCursor('```mermaid\ngraph TD\n    A["开始"] --> B["流程节点"]\n```')}>{t('editor.flowchart')}</button>
               </div>
 
               <textarea
+                ref={textareaRef}
                 className="editor-textarea"
                 value={markdown}
                 onChange={(e) => setMarkdown(e.target.value)}
-                placeholder="在此输入 Markdown 内容..."
+                placeholder={t("editor.placeholder")}
               />
             </div>
           )}
 
-          {/* Preview Pane (Shown in Read & Split mode) */}
           {(viewMode === 'read' || viewMode === 'split') && (
             <div className="preview-pane" ref={previewRef}>
               {renderedContent}
@@ -307,6 +559,99 @@ export default function App() {
           )}
         </main>
       </div>
+      {/* Syntax Help Modal */}
+      {showSyntaxHelp && (
+        <div className="syntax-overlay" onClick={() => setShowSyntaxHelp(false)}>
+          <div className="syntax-panel" onClick={e => e.stopPropagation()}>
+            <div className="syntax-header">
+              <div>
+                <div className="syntax-title">{t('syntax.title')}</div>
+                <div className="syntax-subtitle">{t('syntax.subtitle')}</div>
+              </div>
+              <button className="syntax-close" onClick={() => setShowSyntaxHelp(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="syntax-body">
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">H</span> {t('syntax.headings')}</div>
+                <pre className="syntax-code">{t('syntax.headings.code')}</pre>
+                <div className="syntax-desc">{t('syntax.headings.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">B</span> {t('syntax.emphasis')}</div>
+                <pre className="syntax-code">{t('syntax.emphasis.code')}</pre>
+                <div className="syntax-desc">{t('syntax.emphasis.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">☰</span> {t('syntax.lists')}</div>
+                <pre className="syntax-code">{t('syntax.lists.code')}</pre>
+                <div className="syntax-desc">{t('syntax.lists.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">☑</span> {t('syntax.tasks')}</div>
+                <pre className="syntax-code">{t('syntax.tasks.code')}</pre>
+                <div className="syntax-desc">{t('syntax.tasks.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">—</span> {t('syntax.hr')}</div>
+                <pre className="syntax-code">{'---'}</pre>
+                <div className="syntax-desc">{t('syntax.hr.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">"</span> {t('syntax.quote')}</div>
+                <pre className="syntax-code">{t('syntax.quote.code')}</pre>
+                <div className="syntax-desc">{t('syntax.quote.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">{'{}'}</span> 代码</div>
+                <pre className="syntax-code">{t('syntax.code.sample')}</pre>
+                <div className="syntax-desc">{t('syntax.code.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">⊞</span> {t('syntax.table')}</div>
+                <pre className="syntax-code">{t('syntax.table.code')}</pre>
+                <div className="syntax-desc">{t('syntax.table.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">🔗</span> {t('syntax.links')}</div>
+                <pre className="syntax-code">{t('syntax.links.code')}</pre>
+                <div className="syntax-desc">{t('syntax.links.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">f(x)</span> {t('syntax.math')}</div>
+                <pre className="syntax-code">{t('syntax.math.code')}</pre>
+                <div className="syntax-desc">{t('syntax.math.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">↕</span> {t('syntax.mermaid')}</div>
+                <pre className="syntax-code">{t('syntax.mermaid.code')}</pre>
+                <div className="syntax-desc">{t('syntax.mermaid.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">*</span> {t('syntax.footnote')}</div>
+                <pre className="syntax-code">{t('syntax.footnote.code')}</pre>
+                <div className="syntax-desc">{t('syntax.footnote.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">=</span> {t('syntax.highlight')}</div>
+                <pre className="syntax-code">{t('syntax.highlight.code')}</pre>
+                <div className="syntax-desc">{t('syntax.highlight.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">x²</span> {t('syntax.subsuper')}</div>
+                <pre className="syntax-code">{t('syntax.subsuper.code')}</pre>
+                <div className="syntax-desc">{t('syntax.subsuper.desc')}</div>
+              </div>
+              <div className="syntax-card">
+                <div className="syntax-card-title"><span className="syntax-icon">😄</span> {t('syntax.emoji')}</div>
+                <pre className="syntax-code">{t('syntax.emoji.code')}</pre>
+                <div className="syntax-desc">{t('syntax.emoji.desc')}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

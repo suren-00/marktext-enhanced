@@ -1,7 +1,7 @@
 {
-  "name": "marktext-enhanced",
+  "name": "owlmark",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.1.0",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,8 @@
     "build:mac": "vite build && electron-builder --mac"
   },
   "build": {
-    "appId": "com.marktext.enhanced",
-    "productName": "MarkText Enhanced",
+    "appId": "com.owlmark.app",
+    "productName": "OwlMark",
     "directories": {
       "output": "dist-desktop"
     },
@@ -22,6 +22,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "public/icon.icns",
       "target": [
         "dmg"
       ]
