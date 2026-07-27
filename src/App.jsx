@@ -100,7 +100,7 @@ export default function App() {
           return prev.map((doc, index) => index === existingIndex ? openedDoc : doc);
         });
         setActiveTabId(id);
-        setViewMode('split');
+        setViewMode('read');
         setShowWelcomeScreen(false);
       } catch (error) {
         console.error('Failed to open file:', error);
@@ -253,7 +253,7 @@ export default function App() {
           };
           setDocuments(prev => [...prev, newDoc]);
           setActiveTabId(newDoc.id);
-          setViewMode('split');
+          setViewMode('read');
         }
       };
       reader.readAsText(file);
