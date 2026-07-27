@@ -6,12 +6,30 @@ let mainWindow;
 let rendererReady = false;
 const pendingOpenFiles = [];
 
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+  if (process.platform === 'darwin') {
+    app.focus({ steal: true });
+  }
+  mainWindow.focus();
+}
+
 function deliverOpenFile(filePath) {
   if (!filePath || pendingOpenFiles.includes(filePath)) {
     return;
   }
 
   if (mainWindow && !mainWindow.isDestroyed() && rendererReady) {
+    focusMainWindow();
     mainWindow.webContents.send('open-file', filePath);
     return;
   }
@@ -221,6 +239,8 @@ function createWindow() {
   const startUrl = process.env.VITE_DEV_SERVER_URL || `file://${path.join(__dirname, '../dist/index.html')}`;
   mainWindow.loadURL(startUrl);
 
+  mainWindow.once('ready-to-show', focusMainWindow);
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -269,6 +289,7 @@ ipcMain.handle('read-file', async (event, filePath) => {
 
 ipcMain.on('renderer-ready', () => {
   rendererReady = true;
+  focusMainWindow();
   flushPendingOpenFiles();
 });
 
@@ -280,6 +301,8 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    } else {
+      focusMainWindow();
     }
   });
 });
