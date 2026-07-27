@@ -23,6 +23,3 @@ dist-desktop
 *.njsproj
 *.sln
 *.sw?
-icon.iconset/
-icon.icns
-owlmark-icon.png
