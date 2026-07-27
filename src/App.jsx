@@ -23,6 +23,7 @@ export default function App() {
   const [isDark, setIsDark] = useState(false);
   const [headings, setHeadings] = useState([]);
   const [activeHeadingId, setActiveHeadingId] = useState('');
+  const [fileName, setFileName] = useState('促销预算管理.md');
 
   const previewRef = useRef(null);
 
@@ -65,6 +66,7 @@ export default function App() {
     if (viewMode === 'edit') return;
 
     const handleScroll = () => {
+      const previewRect = previewEl.getBoundingClientRect();
       const headingEls = headings
         .map(h => document.getElementById(h.id))
         .filter(Boolean);
@@ -72,7 +74,8 @@ export default function App() {
       let currentId = '';
       for (const el of headingEls) {
         const rect = el.getBoundingClientRect();
-        if (rect.top <= 100) {
+        const relativeTop = rect.top - previewRect.top;
+        if (relativeTop <= 60) {
           currentId = el.id;
         } else {
           break;
@@ -87,12 +90,16 @@ export default function App() {
     return () => previewEl.removeEventListener('scroll', handleScroll);
   }, [headings, viewMode]);
 
-  // Scroll to heading smoothly
+  // Scroll to heading smoothly within preview pane
   const handleHeadingClick = useCallback((id) => {
     setActiveHeadingId(id);
     const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const previewEl = previewRef.current;
+    if (element && previewEl) {
+      const elRect = element.getBoundingClientRect();
+      const previewRect = previewEl.getBoundingClientRect();
+      const offset = elRect.top - previewRect.top + previewEl.scrollTop - 20;
+      previewEl.scrollTo({ top: offset, behavior: 'smooth' });
     }
   }, []);
 
@@ -107,6 +114,7 @@ export default function App() {
   const handleFileUpload = useCallback((e) => {
     const file = e.target.files?.[0];
     if (file) {
+      setFileName(file.name);
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
@@ -114,6 +122,8 @@ export default function App() {
         }
       };
       reader.readAsText(file);
+      // Reset input so same file can be re-uploaded
+      e.target.value = '';
     }
   }, []);
 
@@ -123,10 +133,10 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = '促销预算管理.md';
+    link.download = fileName;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 100);
-  }, [markdown]);
+  }, [markdown, fileName]);
 
   // Build TOC HTML string (no indentation to avoid marked code-block parsing)
   const buildTocHtml = useCallback(() => {
@@ -208,7 +218,7 @@ export default function App() {
               MarkText Enhanced
               <span className="brand-badge">v2.0</span>
             </div>
-            <span className="file-path">嘉实多项目 &gt; 促销预算管理.md</span>
+            <span className="file-path">{fileName}</span>
           </div>
         </div>
 

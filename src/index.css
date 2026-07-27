@@ -582,3 +582,80 @@ body {
 .inline-toc-list .toc-level-4 { margin-left: 48px; }
 .inline-toc-list .toc-level-5 { margin-left: 64px; }
 .inline-toc-list .toc-level-6 { margin-left: 80px; }
+
+/* ===== Code Blocks ===== */
+.markdown-body-custom pre {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  font-family: 'Fira Code', 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+
+.markdown-body-custom pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+.markdown-body-custom code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Fira Code', 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 0.9em;
+  color: var(--accent-color);
+  border: 1px solid var(--border-color);
+}
+
+/* ===== Blockquotes ===== */
+.markdown-body-custom blockquote {
+  border-left: 4px solid var(--accent-color);
+  padding: 12px 20px;
+  margin: 0 0 16px 0;
+  background: var(--accent-light);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+
+.markdown-body-custom blockquote p {
+  margin-bottom: 0;
+}
+
+/* ===== Links ===== */
+.markdown-body-custom a {
+  color: var(--accent-color);
+  text-decoration: none;
+}
+
+.markdown-body-custom a:hover {
+  text-decoration: underline;
+  color: var(--accent-hover);
+}
+
+/* ===== Strikethrough ===== */
+.markdown-body-custom del {
+  color: var(--text-muted);
+}
+
+/* ===== Horizontal Rules ===== */
+.markdown-body-custom hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 24px 0;
+}
+
+/* ===== Images ===== */
+.markdown-body-custom img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 16px 0;
+}
