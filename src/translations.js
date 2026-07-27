@@ -27,7 +27,7 @@ export const translations = {
     'syntax.highlight': '高亮', 'syntax.highlight.code': '==重点高亮文字==', 'syntax.highlight.desc': '双等号包裹文字，用于标注重点。',
     'syntax.subsuper': '上标 / 下标', 'syntax.subsuper.code': 'x^2^  H~2~O', 'syntax.subsuper.desc': '^ 上标，~ 下标。适合化学式和数学表达。',
     'syntax.emoji': 'Emoji 短码', 'syntax.emoji.code': ':smile:  :rocket:  :star:\n:warning:  :white_check_mark:', 'syntax.emoji.desc': '冒号包裹名称即可插入 Emoji。',
-    'mermaid.zoomIn': '放大', 'mermaid.zoomOut': '缩小', 'mermaid.fitWidth': '适应宽度', 'mermaid.reset': '重置视图', 'mermaid.error': '渲染异常',
+    'mermaid.zoomIn': '放大', 'mermaid.zoomOut': '缩小', 'mermaid.fitWidth': '适应宽度', 'mermaid.fit': '完整显示', 'mermaid.fullscreen': '全屏查看', 'mermaid.exitFullscreen': '退出全屏', 'mermaid.reset': '重置视图', 'mermaid.resetRecommended': '恢复推荐大小', 'mermaid.error': '渲染异常',
     'newDoc.content': '# 新文档\n\n开始写作...\n',
     'saveAs.prompt': '保存为:',
   },
@@ -59,7 +59,7 @@ export const translations = {
     'syntax.highlight': 'Highlight', 'syntax.highlight.code': '==Highlighted text==', 'syntax.highlight.desc': 'Double equals to highlight important text.',
     'syntax.subsuper': 'Superscript / Subscript', 'syntax.subsuper.code': 'x^2^  H~2~O', 'syntax.subsuper.desc': '^ for superscript, ~ for subscript.',
     'syntax.emoji': 'Emoji Shortcodes', 'syntax.emoji.code': ':smile:  :rocket:  :star:\n:warning:  :white_check_mark:', 'syntax.emoji.desc': 'Wrap the name in colons to insert an emoji.',
-    'mermaid.zoomIn': 'Zoom In', 'mermaid.zoomOut': 'Zoom Out', 'mermaid.fitWidth': 'Fit Width', 'mermaid.reset': 'Reset View', 'mermaid.error': 'Render Error',
+    'mermaid.zoomIn': 'Zoom In', 'mermaid.zoomOut': 'Zoom Out', 'mermaid.fitWidth': 'Fit Width', 'mermaid.fit': 'Show Entire Chart', 'mermaid.fullscreen': 'Full Screen', 'mermaid.exitFullscreen': 'Exit Full Screen', 'mermaid.reset': 'Reset View', 'mermaid.resetRecommended': 'Restore Recommended Size', 'mermaid.error': 'Render Error',
     'newDoc.content': '# New Document\n\nStart writing...\n',
     'saveAs.prompt': 'Save as:',
   }

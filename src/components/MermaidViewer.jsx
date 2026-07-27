@@ -6,6 +6,30 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.1;
 
+// Mermaid emits `width="100%"` on its root SVG. Inside a transformed canvas
+// that percentage resolves against its own wrapper and can collapse a wide
+// diagram to a tiny strip. Give the SVG its viewBox dimensions once, then let
+// the viewer's transform be the single source of truth for scaling.
+const normalizeSvgDimensions = (svgMarkup) => svgMarkup.replace(/<svg\b[^>]*>/i, (openingTag) => {
+  const viewBox = openingTag.match(/\bviewBox=(['"])([^'"]+)\1/i)?.[2]
+    ?.trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  const width = viewBox?.[2];
+  const height = viewBox?.[3];
+  if (!width || !height) return openingTag;
+
+  const withoutSizing = openingTag
+    .replace(/\swidth=(['"])[^'"]*\1/i, '')
+    .replace(/\sheight=(['"])[^'"]*\1/i, '')
+    .replace(/\sstyle=(['"])[^'"]*\1/i, '');
+
+  return withoutSizing.replace(
+    '>',
+    ` width="${width}" height="${height}" style="width: ${width}px; height: ${height}px; max-width: none;">`
+  );
+});
+
 const orangeThemeLight = {
   primaryColor: '#fef6eb',
   primaryBorderColor: '#e8850c',
@@ -86,15 +110,18 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
   const [svgContent, setSvgContent] = useState('');
   const [renderError, setRenderError] = useState(null);
   const [zoom, setZoom] = useState(0.7);
-  const [fitZoom, setFitZoom] = useState(0.7);
-  const [autoFit, setAutoFit] = useState(true);
+  const [viewMode, setViewMode] = useState('recommended');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [viewerHeight, setViewerHeight] = useState(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const idRef = useRef(`mermaid-${Math.random().toString(36).substring(2, 9)}`);
+  const wrapperRef = useRef(null);
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const panStartRef = useRef({ x: 0, y: 0 });
+  const resizeStartRef = useRef({ y: 0, height: 0 });
 
   // Render mermaid chart
   useEffect(() => {
@@ -129,7 +156,7 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
         const { svg } = await mermaid.render(uniqueId, sanitizedCode);
 
         if (isMounted) {
-          setSvgContent(svg);
+          setSvgContent(normalizeSvgDimensions(svg));
           setPanOffset({ x: 0, y: 0 });
           // Auto-fit will be calculated after DOM update
         }
@@ -145,73 +172,76 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
     return () => { isMounted = false; };
   }, [chartCode, isDark]);
 
-  const calculateFitZoom = useCallback(() => {
+  const calculateZoomLevels = useCallback(() => {
     const viewport = viewportRef.current;
     const svg = canvasRef.current?.querySelector('svg');
-    if (!viewport || !svg) return 0.7;
+    if (!viewport || !svg) return { fit: 0.7, recommended: 0.7 };
 
     const { width, height } = svg.viewBox.baseVal;
-    if (!width || !height) return 0.7;
-
-    svg.setAttribute('width', `${width}`);
-    svg.setAttribute('height', `${height}`);
-    svg.style.width = `${width}px`;
-    svg.style.height = `${height}px`;
-    svg.style.maxWidth = 'none';
+    if (!width || !height) return { fit: 0.7, recommended: 0.7 };
 
     const availableWidth = Math.max(1, viewport.clientWidth - 48);
     const availableHeight = Math.max(1, viewport.clientHeight - 48);
-    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(availableWidth / width, availableHeight / height)));
+    const fit = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(availableWidth / width, availableHeight / height)));
+
+    // A very wide flow chart can technically fit in the canvas while being
+    // only a few pixels tall. Start it at a readable height instead; the user
+    // can drag horizontally to inspect the rest of the chart.
+    const readableHeight = availableHeight * 0.62;
+    const recommended = Math.min(
+      MAX_ZOOM,
+      Math.max(fit, Math.min(MAX_ZOOM, readableHeight / height))
+    );
+
+    return { fit, recommended };
   }, []);
 
-  const applyFit = useCallback(() => {
-    const nextFitZoom = calculateFitZoom();
-    setFitZoom(nextFitZoom);
-    setZoom(nextFitZoom);
+  const applyPreset = useCallback((preset = 'recommended') => {
+    const levels = calculateZoomLevels();
+    setZoom(preset === 'fit' ? levels.fit : levels.recommended);
     setPanOffset({ x: 0, y: 0 });
-  }, [calculateFitZoom]);
+  }, [calculateZoomLevels]);
 
-  // Fit the rendered SVG to the available canvas, including after entering
-  // or leaving the expanded viewer.
+  // Start each chart at a readable size. The previous behavior always fit the
+  // entire SVG, which made long horizontal flow charts appear as a thin line.
   useEffect(() => {
     if (!svgContent) return undefined;
-    const frame = requestAnimationFrame(applyFit);
+    const frame = requestAnimationFrame(() => applyPreset('recommended'));
     return () => cancelAnimationFrame(frame);
-  }, [svgContent, isFullscreen, applyFit]);
+  }, [svgContent, isFullscreen, applyPreset]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || !autoFit) return undefined;
-    const resizeObserver = new ResizeObserver(applyFit);
+    if (!viewport || viewMode === 'manual') return undefined;
+    const resizeObserver = new ResizeObserver(() => applyPreset(viewMode));
     resizeObserver.observe(viewport);
     return () => resizeObserver.disconnect();
-  }, [autoFit, applyFit]);
+  }, [viewMode, applyPreset]);
 
   const handleZoomIn = useCallback(() => {
-    setAutoFit(false);
+    setViewMode('manual');
     setZoom(prev => Math.min(MAX_ZOOM, +(prev + ZOOM_STEP).toFixed(2)));
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setAutoFit(false);
+    setViewMode('manual');
     setZoom(prev => Math.max(MIN_ZOOM, +(prev - ZOOM_STEP).toFixed(2)));
   }, []);
 
-  // Reset to auto-fit zoom
+  // Restore the readable default, rather than the tiny "fit everything" view.
   const handleReset = useCallback(() => {
-    setAutoFit(true);
-    setZoom(fitZoom);
-    setPanOffset({ x: 0, y: 0 });
-  }, [fitZoom]);
+    setViewMode('recommended');
+    applyPreset('recommended');
+  }, [applyPreset]);
 
   const handleFit = useCallback(() => {
-    setAutoFit(true);
-    applyFit();
-  }, [applyFit]);
+    setViewMode('fit');
+    applyPreset('fit');
+  }, [applyPreset]);
 
   const handleFullscreen = useCallback(() => {
     setIsFullscreen(prev => !prev);
-    setAutoFit(true);
+    setViewMode('recommended');
     setPanOffset({ x: 0, y: 0 });
   }, []);
 
@@ -219,7 +249,7 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      setAutoFit(false);
+      setViewMode('manual');
       setZoom(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(prev + delta).toFixed(2))));
     }
   }, []);
@@ -246,6 +276,30 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
     setIsPanning(false);
   }, []);
 
+  const handleResizeStart = useCallback((e) => {
+    if (isFullscreen || !wrapperRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { height } = wrapperRef.current.getBoundingClientRect();
+    resizeStartRef.current = { y: e.clientY, height };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setViewerHeight(height);
+    setIsResizing(true);
+  }, [isFullscreen]);
+
+  const handleResizeMove = useCallback((e) => {
+    if (!isResizing) return;
+    e.preventDefault();
+    const maxHeight = Math.max(360, Math.min(1200, window.innerHeight - 72));
+    const nextHeight = Math.max(300, Math.min(maxHeight, resizeStartRef.current.height + e.clientY - resizeStartRef.current.y));
+    setViewerHeight(nextHeight);
+  }, [isResizing]);
+
+  const handleResizeEnd = useCallback((e) => {
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    setIsResizing(false);
+  }, []);
+
   useEffect(() => {
     const el = viewportRef.current;
     if (el) {
@@ -266,7 +320,11 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
   const zoomPercent = Math.round(zoom * 100);
 
   return (
-    <div className={`mermaid-wrapper ${isFullscreen ? 'is-fullscreen' : ''}`}>
+    <div
+      className={`mermaid-wrapper ${isFullscreen ? 'is-fullscreen' : ''} ${isResizing ? 'is-resizing' : ''}`}
+      ref={wrapperRef}
+      style={!isFullscreen && viewerHeight ? { height: `${viewerHeight}px` } : undefined}
+    >
       <div className="mermaid-toolbar">
         <button className="mermaid-zoom-btn" onClick={handleZoomOut} title={t?.("mermaid.zoomOut") || "缩小"}>
           <ZoomOut size={14} />
@@ -276,7 +334,7 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
           <ZoomIn size={14} />
         </button>
         <div className="mermaid-toolbar-divider" />
-        <button className="mermaid-zoom-btn" onClick={handleFit} title={t?.("mermaid.fit") || "自动适应"}>
+        <button className="mermaid-zoom-btn" onClick={handleFit} title={t?.("mermaid.fit") || "完整显示"}>
           <Scan size={14} />
         </button>
         <button
@@ -287,7 +345,7 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
         >
           {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
-        <button className="mermaid-zoom-btn" onClick={handleReset} title={t?.("mermaid.reset") || "重置视图"}>
+        <button className="mermaid-zoom-btn" onClick={handleReset} title={t?.("mermaid.resetRecommended") || "恢复推荐大小"}>
           <RotateCcw size={14} />
         </button>
       </div>
@@ -316,6 +374,21 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
             }}
             dangerouslySetInnerHTML={{ __html: svgContent }}
           />
+        </div>
+      )}
+      {!isFullscreen && (
+        <div
+          className="mermaid-resize-handle"
+          title="拖拽调整流程图高度"
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeEnd}
+          onPointerCancel={handleResizeEnd}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="拖拽调整流程图高度"
+        >
+          <span />
         </div>
       )}
     </div>
