@@ -21,7 +21,6 @@ import {
   Languages,
   Folder
 } from 'lucide-react';
-import { defaultDocuments } from './sampleDocument';
 import { SidebarToc } from './components/SidebarToc';
 import { MermaidViewer } from './components/MermaidViewer';
 import { marked } from 'marked';
@@ -34,11 +33,9 @@ const availableLanguages = [
 ];
 
 export default function App() {
-  const [documents, setDocuments] = useState(() => 
-    defaultDocuments.map((doc, i) => ({ ...doc, id: `doc-${i}` }))
-  );
-  const [activeTabId, setActiveTabId] = useState('doc-0');
-  const [viewMode, setViewMode] = useState('read');
+  const [documents, setDocuments] = useState([]);
+  const [activeTabId, setActiveTabId] = useState(null);
+  const [viewMode, setViewMode] = useState('split');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDark, setIsDark] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -48,7 +45,8 @@ export default function App() {
   const [lang, setLang] = useState('zh');
   const t = (key) => translations[lang]?.[key] || translations['zh']?.[key] || key;
 
-  const [showWelcomeScreen, setShowWelcomeScreen] = useState(false);
+  const [showWelcomeScreen, setShowWelcomeScreen] = useState(true);
+  const openFileInputRef = useRef(null);
 
   useEffect(() => {
     setShowWelcomeScreen(documents.length === 0);
@@ -61,12 +59,8 @@ export default function App() {
     }
   }, [lang]);
 
-  const handleOpenRecentDocs = () => {
-    console.log('Opening recent docs...');
-    setShowWelcomeScreen(false);
-    if (window.electronAPI?.showRecentDocs) {
-      window.electronAPI.showRecentDocs();
-    }
+  const handleOpenDocument = () => {
+    openFileInputRef.current?.click();
   };
 
   const handleCreateNewDoc = () => {
@@ -81,6 +75,7 @@ export default function App() {
 
     setDocuments([newDoc]);
     setActiveTabId(newDoc.id);
+    setViewMode('split');
   };
 
   // Handle files opened from Finder
@@ -105,6 +100,7 @@ export default function App() {
           return prev.map((doc, index) => index === existingIndex ? openedDoc : doc);
         });
         setActiveTabId(id);
+        setViewMode('split');
         setShowWelcomeScreen(false);
       } catch (error) {
         console.error('Failed to open file:', error);
@@ -257,6 +253,7 @@ export default function App() {
           };
           setDocuments(prev => [...prev, newDoc]);
           setActiveTabId(newDoc.id);
+          setViewMode('split');
         }
       };
       reader.readAsText(file);
@@ -330,6 +327,7 @@ export default function App() {
     };
     setDocuments(prev => [...prev, newDoc]);
     setActiveTabId(newDoc.id);
+    setViewMode('split');
     setShowFileMenu(false);
   }, []);
 
@@ -419,20 +417,28 @@ export default function App() {
       {showWelcomeScreen && (
         <div className="welcome-screen">
           <div className="welcome-content">
+            <img src="./owlmark-icon.png" alt="OwlMark logo" className="welcome-logo" />
             <h2>OwlMark</h2>
             <p>Your elegant Markdown editor</p>
 
             <div className="welcome-buttons">
-              <button className="btn-primary" onClick={handleOpenRecentDocs}>
+              <button className="btn-primary" onClick={handleOpenDocument}>
                 <Folder size={18} />
-                打开最近文档
+                打开文档
               </button>
 
               <button className="btn-secondary" onClick={handleCreateNewDoc}>
                 <FileText size={18} />
-                新建空白 MD 文档
+                新建空白文档
               </button>
             </div>
+            <input
+              ref={openFileInputRef}
+              type="file"
+              accept=".md,.markdown,.txt"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
           </div>
         </div>
       )}

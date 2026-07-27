@@ -1063,6 +1063,16 @@ body {
   max-width: 600px;
 }
 
+.welcome-logo {
+  display: block;
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  margin: 0 auto 18px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-md);
+}
+
 .welcome-content h2 {
   font-size: 42px;
   font-weight: 700;
@@ -1105,7 +1115,8 @@ body {
 }
 
 .welcome-buttons .btn-primary:hover {
-  background: var(--accent-dark);
+  background: var(--accent-hover);
+  color: #ffffff;
   transform: translateY(-1px);
 }
 
