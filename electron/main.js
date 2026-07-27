@@ -1,7 +1,40 @@
 const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 let mainWindow;
+let rendererReady = false;
+const pendingOpenFiles = [];
+
+function deliverOpenFile(filePath) {
+  if (!filePath || pendingOpenFiles.includes(filePath)) {
+    return;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && rendererReady) {
+    mainWindow.webContents.send('open-file', filePath);
+    return;
+  }
+
+  pendingOpenFiles.push(filePath);
+}
+
+function flushPendingOpenFiles() {
+  if (!mainWindow || mainWindow.isDestroyed() || !rendererReady) {
+    return;
+  }
+
+  while (pendingOpenFiles.length > 0) {
+    mainWindow.webContents.send('open-file', pendingOpenFiles.shift());
+  }
+}
+
+// macOS may emit this before app.whenReady(), so the listener must be
+// registered before the window is created.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  deliverOpenFile(filePath);
+});
 
 // Menu translations
 const menuTranslations = {
@@ -168,6 +201,7 @@ ipcMain.on('set-language', (event, lang) => {
 });
 
 function createWindow() {
+  rendererReady = false;
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 1050,
@@ -193,13 +227,56 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    rendererReady = false;
     mainWindow = null;
   });
 }
 
+// Handle welcome screen actions
+ipcMain.on('close-all-documents', () => {
+  if (mainWindow) {
+    mainWindow.webContents.send('all-documents-closed');
+  }
+});
+
+ipcMain.on('open-recent-docs', () => {
+  // This will be implemented in the renderer
+  if (mainWindow) {
+    mainWindow.webContents.send('show-welcome-screen', { showRecent: true });
+  }
+});
+
+ipcMain.on('create-new-doc', () => {
+  if (mainWindow) {
+    mainWindow.webContents.send('create-blank-document');
+  }
+});
+
+// Handle file reading
+ipcMain.handle('read-file', async (event, filePath) => {
+  if (typeof filePath !== 'string' || filePath.length === 0) {
+    throw new TypeError('A valid file path is required');
+  }
+
+  try {
+    const text = await fs.promises.readFile(filePath, 'utf-8');
+    return text;
+  } catch (error) {
+    console.error('Failed to read file:', error);
+    throw error;
+  }
+});
+
+ipcMain.on('renderer-ready', () => {
+  rendererReady = true;
+  flushPendingOpenFiles();
+});
+
 app.whenReady().then(() => {
   buildMenu('zh'); // Default to Chinese
   createWindow();
+
+  // On macOS, handle opening files even when app is already running
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();

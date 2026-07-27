@@ -18,7 +18,8 @@ import {
   ChevronDown,
   FilePlus,
   Save,
-  Languages
+  Languages,
+  Folder
 } from 'lucide-react';
 import { defaultDocuments } from './sampleDocument';
 import { SidebarToc } from './components/SidebarToc';
@@ -47,12 +48,74 @@ export default function App() {
   const [lang, setLang] = useState('zh');
   const t = (key) => translations[lang]?.[key] || translations['zh']?.[key] || key;
 
+  const [showWelcomeScreen, setShowWelcomeScreen] = useState(false);
+
+  useEffect(() => {
+    setShowWelcomeScreen(documents.length === 0);
+  }, [documents.length]);
+
   // Notify Electron main process when language changes
   useEffect(() => {
     if (window.electronAPI?.setLanguage) {
       window.electronAPI.setLanguage(lang);
     }
   }, [lang]);
+
+  const handleOpenRecentDocs = () => {
+    console.log('Opening recent docs...');
+    setShowWelcomeScreen(false);
+    if (window.electronAPI?.showRecentDocs) {
+      window.electronAPI.showRecentDocs();
+    }
+  };
+
+  const handleCreateNewDoc = () => {
+    console.log('Creating new doc...');
+    setShowWelcomeScreen(false);
+
+    const newDoc = {
+      id: `doc-${Date.now()}`,
+      name: '新建文档.md',
+      content: ''
+    };
+
+    setDocuments([newDoc]);
+    setActiveTabId(newDoc.id);
+  };
+
+  // Handle files opened from Finder
+  useEffect(() => {
+    const electronAPI = window.electronAPI;
+    if (!electronAPI?.onOpenFile || !electronAPI?.readFile) {
+      return undefined;
+    }
+
+    const unsubscribe = electronAPI.onOpenFile(async (filePath) => {
+      try {
+        const text = await electronAPI.readFile(filePath);
+        const fileName = filePath.split(/[\\/]/).pop() || '未命名.md';
+        const id = `file:${filePath}`;
+        const openedDoc = { id, name: fileName, content: text, filePath };
+
+        setDocuments(prev => {
+          const existingIndex = prev.findIndex(doc => doc.filePath === filePath);
+          if (existingIndex === -1) {
+            return [...prev, openedDoc];
+          }
+          return prev.map((doc, index) => index === existingIndex ? openedDoc : doc);
+        });
+        setActiveTabId(id);
+        setShowWelcomeScreen(false);
+      } catch (error) {
+        console.error('Failed to open file:', error);
+        alert(`无法打开文件：${error.message}`);
+      }
+    });
+
+    electronAPI.notifyRendererReady?.();
+    return unsubscribe;
+  }, []);
+
   const [headings, setHeadings] = useState([]);
   const [activeHeadingId, setActiveHeadingId] = useState('');
 
@@ -171,12 +234,11 @@ export default function App() {
   const handleCloseTab = useCallback((tabId, e) => {
     e?.stopPropagation();
     setDocuments(prev => {
-      if (prev.length <= 1) return prev;
       const idx = prev.findIndex(d => d.id === tabId);
       const next = prev.filter(d => d.id !== tabId);
       if (tabId === activeTabId) {
         const newIdx = Math.min(idx, next.length - 1);
-        setActiveTabId(next[newIdx]?.id || '');
+        setActiveTabId(next[newIdx]?.id ?? null);
       }
       return next;
     });
@@ -353,6 +415,27 @@ export default function App() {
 
   return (
     <div className="app-container">
+      {/* Welcome Screen - shown when no documents are open */}
+      {showWelcomeScreen && (
+        <div className="welcome-screen">
+          <div className="welcome-content">
+            <h2>OwlMark</h2>
+            <p>Your elegant Markdown editor</p>
+
+            <div className="welcome-buttons">
+              <button className="btn-primary" onClick={handleOpenRecentDocs}>
+                <Folder size={18} />
+                打开最近文档
+              </button>
+
+              <button className="btn-secondary" onClick={handleCreateNewDoc}>
+                <FileText size={18} />
+                新建空白 MD 文档
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Top Navbar - Claude style, draggable for Electron */}
       <header className="top-nav">
         <div className="brand">
@@ -504,15 +587,13 @@ export default function App() {
             onClick={() => setActiveTabId(doc.id)}
           >
             <span className="doc-tab-name">{doc.name}</span>
-            {documents.length > 1 && (
-              <button
-                className="doc-tab-close"
-                onClick={(e) => handleCloseTab(doc.id, e)}
-                title={t("tab.close")}
-              >
-                <X size={12} />
-              </button>
-            )}
+            <button
+              className="doc-tab-close"
+              onClick={(e) => handleCloseTab(doc.id, e)}
+              title={t("tab.close")}
+            >
+              <X size={12} />
+            </button>
           </div>
         ))}
         <label className="doc-tab doc-tab-add" title={t("tab.newFile")} style={{ cursor: 'pointer' }}>

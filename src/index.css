@@ -1042,3 +1042,81 @@ body {
   color: var(--text-muted);
   line-height: 1.4;
 }
+
+/* Welcome Screen */
+.welcome-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.welcome-content {
+  text-align: center;
+  padding: 48px;
+  max-width: 600px;
+}
+
+.welcome-content h2 {
+  font-size: 42px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--text-primary);
+}
+
+.welcome-content p {
+  font-size: 16px;
+  color: var(--text-muted);
+  margin: 0 0 36px;
+}
+
+.welcome-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.welcome-buttons .btn-primary,
+.welcome-buttons .btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 280px;
+  margin: 0 auto;
+}
+
+.welcome-buttons .btn-primary {
+  background: var(--accent-color);
+  color: white;
+  border: none;
+}
+
+.welcome-buttons .btn-primary:hover {
+  background: var(--accent-dark);
+  transform: translateY(-1px);
+}
+
+.welcome-buttons .btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-color);
+}
+
+.welcome-buttons .btn-secondary:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-color);
+  transform: translateY(-1px);
+}
