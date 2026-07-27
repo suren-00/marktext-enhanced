@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -307,6 +307,66 @@ ipcMain.handle('read-file', async (event, filePath) => {
   } catch (error) {
     console.error('Failed to read file:', error);
     throw error;
+  }
+});
+
+// Render sanitized HTML in a hidden window and let Electron create the PDF.
+// Using a native print pipeline avoids window.open(), which is intentionally
+// blocked by setWindowOpenHandler for ordinary external links.
+ipcMain.handle('export-pdf', async (_event, payload = {}) => {
+  if (typeof payload.html !== 'string' || payload.html.length === 0) {
+    throw new TypeError('PDF content is required');
+  }
+
+  const sourceName = typeof payload.fileName === 'string' ? payload.fileName : '未命名.md';
+  const baseName = sourceName.replace(/\.[^/.]+$/, '') || '未命名';
+  const defaultName = `${baseName}.pdf`;
+  const saveOptions = {
+    title: '导出 PDF',
+    defaultPath: path.join(app.getPath('documents'), defaultName),
+    filters: [{ name: 'PDF 文件', extensions: ['pdf'] }]
+  };
+  const saveResult = mainWindow && !mainWindow.isDestroyed()
+    ? await dialog.showSaveDialog(mainWindow, saveOptions)
+    : await dialog.showSaveDialog(saveOptions);
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
+  }
+
+  let printWindow;
+  try {
+    printWindow = new BrowserWindow({
+      show: false,
+      width: 1200,
+      height: 900,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true
+      }
+    });
+
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(payload.html)}`;
+    await printWindow.loadURL(dataUrl);
+    const pdfBuffer = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 }
+    });
+
+    const outputPath = saveResult.filePath.toLowerCase().endsWith('.pdf')
+      ? saveResult.filePath
+      : `${saveResult.filePath}.pdf`;
+    await fs.promises.writeFile(outputPath, pdfBuffer);
+    return { canceled: false, filePath: outputPath };
+  } catch (error) {
+    console.error('Failed to export PDF:', error);
+    throw new Error(`PDF 导出失败：${error.message}`);
+  } finally {
+    if (printWindow && !printWindow.isDestroyed()) {
+      printWindow.close();
+    }
   }
 });
 

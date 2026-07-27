@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOpenFile: (callback) => subscribe('open-file', callback, filePath => filePath),
   notifyRendererReady: () => ipcRenderer.send('renderer-ready'),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  exportPDF: (payload) => ipcRenderer.invoke('export-pdf', payload),
   closeAllDocuments: () => ipcRenderer.send('close-all-documents'),
   showRecentDocs: () => ipcRenderer.send('open-recent-docs'),
   createNewDoc: () => ipcRenderer.send('create-new-doc'),

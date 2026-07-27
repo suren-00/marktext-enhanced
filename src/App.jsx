@@ -302,20 +302,38 @@ export default function App() {
     setShowExportMenu(false);
   }, [markdown, fileName]);
 
-  // Export as PDF (via print dialog)
-  const handleExportPDF = useCallback(() => {
-    const printWindow = window.open('', '_blank');
+  // Export as PDF through Electron's native print pipeline. The old approach
+  // used window.open(), which the desktop shell blocks for external links.
+  const handleExportPDF = useCallback(async () => {
     const htmlContent = DOMPurify.sanitize(marked.parse(markdown), { ADD_ATTR: ['style'], ADD_TAGS: ['div','ul','li','a','span'] });
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>${fileName}</title>
+    const fullHtml = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${fileName}</title>
       <style>body{font-family:-apple-system,"PingFang SC",sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#1a1a1a;line-height:1.7}
       h1,h2,h3{margin-top:1.5em}code{background:#f5f5f5;padding:2px 6px;border-radius:4px}
       pre{background:#f5f5f5;padding:16px;border-radius:8px;overflow-x:auto}
       table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px 12px}
       th{background:#f5f5f5}blockquote{border-left:4px solid #e8850c;padding-left:16px;margin-left:0;color:#666}
-      @media print{body{margin:0}}</style></head><body>${htmlContent}</body></html>`);
-    printWindow.document.close();
-    printWindow.onload = () => { printWindow.print(); };
+      @page{size:A4;margin:18mm 16mm} @media print{body{max-width:none;margin:0;padding:0}}</style></head><body>${htmlContent}</body></html>`;
     setShowExportMenu(false);
+
+    try {
+      if (window.electronAPI?.exportPDF) {
+        await window.electronAPI.exportPDF({ html: fullHtml, fileName });
+        return;
+      }
+
+      // Browser fallback for development mode.
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        window.print();
+        return;
+      }
+      printWindow.document.write(fullHtml);
+      printWindow.document.close();
+      printWindow.onload = () => printWindow.print();
+    } catch (error) {
+      console.error('PDF export error:', error);
+      alert(error.message || 'PDF 导出失败');
+    }
   }, [fileName, markdown]);
 
   // New blank document
