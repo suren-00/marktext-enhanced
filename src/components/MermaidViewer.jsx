@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mermaid from 'mermaid';
-import { ZoomIn, ZoomOut, RotateCcw, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Maximize2, Minimize2, Scan } from 'lucide-react';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3;
@@ -87,10 +87,13 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
   const [renderError, setRenderError] = useState(null);
   const [zoom, setZoom] = useState(0.7);
   const [fitZoom, setFitZoom] = useState(0.7);
+  const [autoFit, setAutoFit] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const idRef = useRef(`mermaid-${Math.random().toString(36).substring(2, 9)}`);
-  const wrapperRef = useRef(null);
+  const viewportRef = useRef(null);
+  const canvasRef = useRef(null);
   const panStartRef = useRef({ x: 0, y: 0 });
 
   // Render mermaid chart
@@ -142,30 +145,73 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
     return () => { isMounted = false; };
   }, [chartCode, isDark]);
 
-  // Reset zoom after SVG renders (CSS handles the initial sizing)
-  useEffect(() => {
-    if (!svgContent) return;
-    setFitZoom(0.7);
-    setZoom(0.7);
+  const calculateFitZoom = useCallback(() => {
+    const viewport = viewportRef.current;
+    const svg = canvasRef.current?.querySelector('svg');
+    if (!viewport || !svg) return 0.7;
+
+    const { width, height } = svg.viewBox.baseVal;
+    if (!width || !height) return 0.7;
+
+    svg.setAttribute('width', `${width}`);
+    svg.setAttribute('height', `${height}`);
+    svg.style.width = `${width}px`;
+    svg.style.height = `${height}px`;
+    svg.style.maxWidth = 'none';
+
+    const availableWidth = Math.max(1, viewport.clientWidth - 48);
+    const availableHeight = Math.max(1, viewport.clientHeight - 48);
+    return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(availableWidth / width, availableHeight / height)));
+  }, []);
+
+  const applyFit = useCallback(() => {
+    const nextFitZoom = calculateFitZoom();
+    setFitZoom(nextFitZoom);
+    setZoom(nextFitZoom);
     setPanOffset({ x: 0, y: 0 });
-  }, [svgContent]);
+  }, [calculateFitZoom]);
+
+  // Fit the rendered SVG to the available canvas, including after entering
+  // or leaving the expanded viewer.
+  useEffect(() => {
+    if (!svgContent) return undefined;
+    const frame = requestAnimationFrame(applyFit);
+    return () => cancelAnimationFrame(frame);
+  }, [svgContent, isFullscreen, applyFit]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !autoFit) return undefined;
+    const resizeObserver = new ResizeObserver(applyFit);
+    resizeObserver.observe(viewport);
+    return () => resizeObserver.disconnect();
+  }, [autoFit, applyFit]);
 
   const handleZoomIn = useCallback(() => {
+    setAutoFit(false);
     setZoom(prev => Math.min(MAX_ZOOM, +(prev + ZOOM_STEP).toFixed(2)));
   }, []);
 
   const handleZoomOut = useCallback(() => {
+    setAutoFit(false);
     setZoom(prev => Math.max(MIN_ZOOM, +(prev - ZOOM_STEP).toFixed(2)));
   }, []);
 
   // Reset to auto-fit zoom
   const handleReset = useCallback(() => {
-    setZoom(0.7);
+    setAutoFit(true);
+    setZoom(fitZoom);
     setPanOffset({ x: 0, y: 0 });
-  }, []);
+  }, [fitZoom]);
 
-  const handleFitWidth = useCallback(() => {
-    setZoom(0.7);
+  const handleFit = useCallback(() => {
+    setAutoFit(true);
+    applyFit();
+  }, [applyFit]);
+
+  const handleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => !prev);
+    setAutoFit(true);
     setPanOffset({ x: 0, y: 0 });
   }, []);
 
@@ -173,19 +219,21 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      setAutoFit(false);
       setZoom(prev => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(prev + delta).toFixed(2))));
     }
   }, []);
 
-  const handleMouseDown = useCallback((e) => {
-    if (zoom > 0.7 && e.button === 0) {
-      setIsPanning(true);
-      panStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
-    }
-  }, [zoom, panOffset]);
+  const handlePointerDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setIsPanning(true);
+    panStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+  }, [panOffset]);
 
-  const handleMouseMove = useCallback((e) => {
+  const handlePointerMove = useCallback((e) => {
     if (isPanning) {
+      e.preventDefault();
       setPanOffset({
         x: e.clientX - panStartRef.current.x,
         y: e.clientY - panStartRef.current.y
@@ -193,29 +241,32 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
     }
   }, [isPanning]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback((e) => {
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
     setIsPanning(false);
   }, []);
 
   useEffect(() => {
-    const el = wrapperRef.current;
+    const el = viewportRef.current;
     if (el) {
       el.addEventListener('wheel', handleWheel, { passive: false });
       return () => el.removeEventListener('wheel', handleWheel);
     }
   }, [handleWheel]);
 
+  useEffect(() => {
+    if (!isFullscreen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsFullscreen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
   const zoomPercent = Math.round(zoom * 100);
 
   return (
-    <div 
-      className="mermaid-wrapper" 
-      ref={wrapperRef}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-    >
+    <div className={`mermaid-wrapper ${isFullscreen ? 'is-fullscreen' : ''}`}>
       <div className="mermaid-toolbar">
         <button className="mermaid-zoom-btn" onClick={handleZoomOut} title={t?.("mermaid.zoomOut") || "缩小"}>
           <ZoomOut size={14} />
@@ -225,8 +276,16 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
           <ZoomIn size={14} />
         </button>
         <div className="mermaid-toolbar-divider" />
-        <button className="mermaid-zoom-btn" onClick={handleFitWidth} title={t?.("mermaid.fitWidth") || "适应宽度"}>
-          <Maximize2 size={14} />
+        <button className="mermaid-zoom-btn" onClick={handleFit} title={t?.("mermaid.fit") || "自动适应"}>
+          <Scan size={14} />
+        </button>
+        <button
+          className="mermaid-zoom-btn"
+          onClick={handleFullscreen}
+          title={isFullscreen ? (t?.("mermaid.exitFullscreen") || "退出全屏") : (t?.("mermaid.fullscreen") || "全屏查看")}
+          aria-label={isFullscreen ? "退出全屏" : "全屏查看"}
+        >
+          {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
         <button className="mermaid-zoom-btn" onClick={handleReset} title={t?.("mermaid.reset") || "重置视图"}>
           <RotateCcw size={14} />
@@ -238,13 +297,21 @@ export const MermaidViewer = ({ chartCode, isDark, t }) => {
           <strong>{t?.("mermaid.error") || "渲染异常"}:</strong> {renderError}
         </div>
       ) : (
-        <div className="mermaid-svg-container">
+        <div
+          className="mermaid-svg-container"
+          ref={viewportRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
           <div
             className="mermaid-svg-inner"
+            ref={canvasRef}
             style={{
-              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
-              transformOrigin: 'top center',
-              cursor: zoom > 0.7 ? (isPanning ? 'grabbing' : 'grab') : 'default',
+              transform: `translate(-50%, -50%) translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
+              transformOrigin: 'center',
+              cursor: isPanning ? 'grabbing' : 'grab',
               transition: isPanning ? 'none' : 'transform 0.2s ease'
             }}
             dangerouslySetInnerHTML={{ __html: svgContent }}
