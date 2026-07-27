@@ -18,7 +18,7 @@ import DOMPurify from 'dompurify';
 
 export default function App() {
   const [markdown, setMarkdown] = useState(sampleMarkdown);
-  const [viewMode, setViewMode] = useState('split');
+  const [viewMode, setViewMode] = useState('read');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDark, setIsDark] = useState(false);
   const [headings, setHeadings] = useState([]);
@@ -128,6 +128,12 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 100);
   }, [markdown]);
 
+  // Build TOC HTML string (no indentation to avoid marked code-block parsing)
+  const buildTocHtml = useCallback(() => {
+    const items = headings.map(h => `<li class="toc-level-${h.level}"><a href="#${h.id}">${h.title}</a></li>`).join('');
+    return `<div class="inline-toc-box"><div class="inline-toc-title">📌 文档目录树</div><ul class="inline-toc-list">${items}</ul></div>`;
+  }, [headings]);
+
   // Custom parser to split Mermaid code blocks from markdown
   const renderedContent = useMemo(() => {
     const mdContent = markdown;
@@ -164,18 +170,13 @@ export default function App() {
         });
 
         if (htmlStr.includes('[toc]')) {
-          const tocHtml = `
-            <div class="inline-toc-box">
-              <div class="inline-toc-title">📌 文档目录树</div>
-              <ul class="inline-toc-list">
-                ${headings.map(h => `<li style="margin-left: ${(h.level - 1) * 16}px"><a href="#${h.id}">${h.title}</a></li>`).join('')}
-              </ul>
-            </div>
-          `;
-          htmlStr = htmlStr.replace('[toc]', tocHtml);
+          htmlStr = htmlStr.replace('[toc]', buildTocHtml());
         }
 
-        const parsedHtml = DOMPurify.sanitize(marked.parse(htmlStr));
+        const parsedHtml = DOMPurify.sanitize(marked.parse(htmlStr), {
+          ADD_ATTR: ['style'],
+          ADD_TAGS: ['div', 'ul', 'li', 'a', 'span']
+        });
 
         return (
           <div
@@ -186,11 +187,11 @@ export default function App() {
         );
       }
     });
-  }, [markdown, isDark, headings]);
+  }, [markdown, isDark, headings, buildTocHtml]);
 
   return (
     <div className="app-container">
-      {/* Top Navbar */}
+      {/* Top Navbar - draggable region for Electron */}
       <header className="top-nav">
         <div className="brand">
           <button 

@@ -561,3 +561,24 @@ body {
   color: var(--accent-color);
   text-decoration: underline;
 }
+
+/* Electron window drag support */
+.top-nav {
+  -webkit-app-region: drag;
+}
+
+.top-nav button,
+.top-nav label,
+.top-nav input,
+.top-nav .view-switcher,
+.top-nav .icon-btn {
+  -webkit-app-region: no-drag;
+}
+
+/* Inline TOC level indentation (class-based, no inline styles needed) */
+.inline-toc-list .toc-level-1 { margin-left: 0; }
+.inline-toc-list .toc-level-2 { margin-left: 16px; }
+.inline-toc-list .toc-level-3 { margin-left: 32px; }
+.inline-toc-list .toc-level-4 { margin-left: 48px; }
+.inline-toc-list .toc-level-5 { margin-left: 64px; }
+.inline-toc-list .toc-level-6 { margin-left: 80px; }
