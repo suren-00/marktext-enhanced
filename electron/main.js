@@ -4,6 +4,7 @@ const path = require('path');
 
 let mainWindow;
 let rendererReady = false;
+let isQuitting = false;
 const pendingOpenFiles = [];
 
 function focusMainWindow() {
@@ -28,13 +29,25 @@ function deliverOpenFile(filePath) {
     return;
   }
 
-  if (mainWindow && !mainWindow.isDestroyed() && rendererReady) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    pendingOpenFiles.push(filePath);
+
+    // On macOS the app stays alive after its last window is closed. Recreate
+    // the window so a later Finder open event has somewhere to display.
+    if (app.isReady()) {
+      createWindow();
+    }
+    return;
+  }
+
+  if (rendererReady) {
     focusMainWindow();
     mainWindow.webContents.send('open-file', filePath);
     return;
   }
 
   pendingOpenFiles.push(filePath);
+  focusMainWindow();
 }
 
 function flushPendingOpenFiles() {
@@ -246,6 +259,16 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  mainWindow.on('close', (event) => {
+    // Keep a reusable window while the macOS app remains running. This lets a
+    // later Finder double-click reliably show the app again after the user
+    // closes its window with the red traffic-light button.
+    if (process.platform === 'darwin' && !isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     rendererReady = false;
     mainWindow = null;
@@ -305,6 +328,10 @@ app.whenReady().then(() => {
       focusMainWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('window-all-closed', () => {
