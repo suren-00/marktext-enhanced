@@ -1,22 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
-
-// Initialize Mermaid with optimized rendering options
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-  fontFamily: 'Inter, system-ui, sans-serif',
-  flowchart: {
-    htmlLabels: true,
-    useMaxWidth: true,
-    curve: 'basis',
-    nodeSpacing: 50,
-    rankSpacing: 50,
-    padding: 15
-  }
-});
 
 export const MermaidViewer = ({ chartCode, isDark }) => {
   const containerRef = useRef(null);
@@ -33,26 +16,26 @@ export const MermaidViewer = ({ chartCode, isDark }) => {
       try {
         setRenderError(null);
         
-        // Re-initialize theme when dark mode changes
+        // Use htmlLabels: false to force pure SVG text rendering.
+        // This avoids foreignObject issues in Electron that cause
+        // Chinese edge labels to render as broken gray blocks.
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? 'dark' : 'default',
           securityLevel: 'loose',
-          fontFamily: 'Inter, system-ui, sans-serif',
+          fontFamily: '"Inter", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif',
           flowchart: {
-            htmlLabels: true,
+            htmlLabels: false,
             useMaxWidth: true,
             curve: 'basis',
-            nodeSpacing: 60,
+            nodeSpacing: 50,
             rankSpacing: 60,
-            padding: 18
+            padding: 16,
+            wrappingWidth: 200
           }
         });
 
-        // Pre-process code to convert simple linebreaks if needed
-        const sanitizedCode = chartCode
-          .replace(/\\n/g, '<br/>')
-          .trim();
+        const sanitizedCode = chartCode.trim();
 
         const uniqueId = `svg-${idRef.current}-${Date.now()}`;
         const { svg } = await mermaid.render(uniqueId, sanitizedCode);
@@ -77,15 +60,8 @@ export const MermaidViewer = ({ chartCode, isDark }) => {
 
   return (
     <div className="mermaid-wrapper">
-      <div className="mermaid-toolbar">
-        <span className="fix-badge">
-          <CheckCircle2 size={12} />
-          Mermaid 渲染引擎已自动优化防排版错位
-        </span>
-      </div>
-
       {renderError ? (
-        <div style={{ color: '#ef4444', padding: '12px', fontSize: '13px', background: '#fef2f2', borderRadius: '8px' }}>
+        <div style={{ color: '#ef4444', padding: '12px', fontSize: '13px', background: '#fef2f2', borderRadius: '8px', width: '100%' }}>
           <strong>渲染异常:</strong> {renderError}
         </div>
       ) : (

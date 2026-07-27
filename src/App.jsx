@@ -8,14 +8,7 @@ import {
   Moon, 
   Download, 
   Upload, 
-  GitBranch, 
-  Sparkles, 
-  FileText, 
-  ListOrdered, 
-  Check, 
-  ExternalLink,
-  Code,
-  Copy
+  ListOrdered
 } from 'lucide-react';
 import { sampleMarkdown } from './sampleDocument';
 import { SidebarToc } from './components/SidebarToc';
@@ -24,13 +17,11 @@ import { marked } from 'marked';
 
 export default function App() {
   const [markdown, setMarkdown] = useState(sampleMarkdown);
-  const [viewMode, setViewMode] = useState('split'); // 'read' | 'split' | 'edit'
+  const [viewMode, setViewMode] = useState('split');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDark, setIsDark] = useState(false);
   const [headings, setHeadings] = useState([]);
   const [activeHeadingId, setActiveHeadingId] = useState('');
-  const [showGitModal, setShowGitModal] = useState(false);
-  const [copiedGitCmd, setCopiedGitCmd] = useState(false);
 
   const previewRef = useRef(null);
 
@@ -49,7 +40,7 @@ export default function App() {
       if (match) {
         const level = match[1].length;
         const rawTitle = match[2].trim();
-        const title = rawTitle.replace(/[*_~`]/g, ''); // strip markdown formatting for TOC title
+        const title = rawTitle.replace(/[*_~`]/g, '');
         const id = 'heading-' + title.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-');
         extracted.push({ level, title, id, rawTitle });
       }
@@ -175,7 +166,7 @@ export default function App() {
           <div className="brand-info">
             <div className="brand-name">
               MarkText Enhanced
-              <span className="brand-badge">v2.0 (已修复渲染)</span>
+              <span className="brand-badge">v2.0</span>
             </div>
             <span className="file-path">嘉实多项目 &gt; 促销预算管理.md</span>
           </div>
@@ -223,11 +214,6 @@ export default function App() {
           <button className="icon-btn" onClick={() => setIsDark(!isDark)} title="切换主题">
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-
-          <button className="action-btn primary" onClick={() => setShowGitModal(true)}>
-            <GitBranch size={15} />
-            上传到 GitHub
-          </button>
         </div>
       </header>
 
@@ -251,7 +237,7 @@ export default function App() {
                 <span style={{ flex: 1 }}></span>
                 <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n# 新标题')}>+ 标题</button>
                 <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n| 列1 | 列2 |\n|---|---|\n| 值1 | 值2 |')}>+ 表格</button>
-                <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n```mermaid\ngraph TD\n    A[开始] --> B[流程节点]\n```')}>+ 流程图</button>
+                <button className="tool-btn" onClick={() => setMarkdown(prev => prev + '\n```mermaid\ngraph TD\n    A["开始"] --> B["流程节点"]\n```')}>+ 流程图</button>
               </div>
 
               <textarea
@@ -271,79 +257,6 @@ export default function App() {
           )}
         </main>
       </div>
-
-      {/* Git Push Guide Modal */}
-      {showGitModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100
-        }}>
-          <div style={{
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '12px',
-            width: '560px',
-            maxWidth: '90%',
-            padding: '24px',
-            boxShadow: 'var(--shadow-lg)'
-          }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <GitBranch size={20} color="var(--accent-color)" />
-              推送项目到您自己的 GitHub 账号
-            </h3>
-            
-            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.6' }}>
-              本项目（MarkText Enhanced）已在您的本地初始化为标准的 Git 仓库！请按以下命令将代码推送到您自己的 GitHub 仓库：
-            </p>
-
-            <div style={{
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              padding: '14px',
-              borderRadius: '8px',
-              fontFamily: 'Fira Code, monospace',
-              fontSize: '12.5px',
-              lineHeight: '1.7',
-              color: 'var(--text-primary)',
-              position: 'relative',
-              marginBottom: '20px'
-            }}>
-              <div># 1. 进入本地项目目录</div>
-              <div style={{ color: 'var(--accent-color)' }}>cd /Users/xubaobao/.gemini/antigravity/scratch/marktext-enhanced</div>
-              <br />
-              <div># 2. 关联您在 GitHub 上新建的远程仓库</div>
-              <div style={{ color: 'var(--accent-color)' }}>git remote add origin https://github.com/YOUR_USERNAME/marktext-enhanced.git</div>
-              <br />
-              <div># 3. 推送代码到 GitHub 仓库</div>
-              <div style={{ color: 'var(--accent-color)' }}>git branch -M main</div>
-              <div style={{ color: 'var(--accent-color)' }}>git push -u origin main</div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button 
-                className="action-btn"
-                onClick={() => {
-                  navigator.clipboard.writeText(`cd /Users/xubaobao/.gemini/antigravity/scratch/marktext-enhanced\ngit remote add origin https://github.com/YOUR_USERNAME/marktext-enhanced.git\ngit branch -M main\ngit push -u origin main`);
-                  setCopiedGitCmd(true);
-                  setTimeout(() => setCopiedGitCmd(false), 2000);
-                }}
-              >
-                {copiedGitCmd ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
-                {copiedGitCmd ? '已复制命令' : '复制 Git 命令'}
-              </button>
-              <button className="action-btn primary" onClick={() => setShowGitModal(false)}>
-                我知道了
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
