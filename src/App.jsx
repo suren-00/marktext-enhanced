@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   BookOpen, 
   Columns, 
@@ -14,6 +14,7 @@ import { sampleMarkdown } from './sampleDocument';
 import { SidebarToc } from './components/SidebarToc';
 import { MermaidViewer } from './components/MermaidViewer';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export default function App() {
   const [markdown, setMarkdown] = useState(sampleMarkdown);
@@ -30,10 +31,11 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
-  // Extract headings from Markdown
+  // Extract headings from Markdown (with duplicate ID handling)
   useEffect(() => {
     const lines = markdown.split('\n');
     const extracted = [];
+    const idCount = {};
     
     lines.forEach((line) => {
       const match = line.match(/^(#{1,6})\s+(.+)$/);
@@ -41,7 +43,14 @@ export default function App() {
         const level = match[1].length;
         const rawTitle = match[2].trim();
         const title = rawTitle.replace(/[*_~`]/g, '');
-        const id = 'heading-' + title.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-');
+        let id = 'heading-' + title.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-');
+        // Handle duplicate heading IDs
+        if (idCount[id] !== undefined) {
+          idCount[id] += 1;
+          id = `${id}-${idCount[id]}`;
+        } else {
+          idCount[id] = 0;
+        }
         extracted.push({ level, title, id, rawTitle });
       }
     });
@@ -49,24 +58,53 @@ export default function App() {
     setHeadings(extracted);
   }, [markdown]);
 
+  // Scroll Spy: highlight active heading on scroll
+  useEffect(() => {
+    const previewEl = previewRef.current;
+    if (!previewEl || headings.length === 0) return;
+    if (viewMode === 'edit') return;
+
+    const handleScroll = () => {
+      const headingEls = headings
+        .map(h => document.getElementById(h.id))
+        .filter(Boolean);
+
+      let currentId = '';
+      for (const el of headingEls) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= 100) {
+          currentId = el.id;
+        } else {
+          break;
+        }
+      }
+      if (currentId) {
+        setActiveHeadingId(currentId);
+      }
+    };
+
+    previewEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => previewEl.removeEventListener('scroll', handleScroll);
+  }, [headings, viewMode]);
+
   // Scroll to heading smoothly
-  const handleHeadingClick = (id) => {
+  const handleHeadingClick = useCallback((id) => {
     setActiveHeadingId(id);
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  };
+  }, []);
 
   // Insert [toc] at current cursor or top
-  const handleInsertToc = () => {
+  const handleInsertToc = useCallback(() => {
     if (!markdown.includes('[toc]')) {
       setMarkdown((prev) => '# 目录\n\n[toc]\n\n' + prev);
     }
-  };
+  }, [markdown]);
 
   // Handle local MD file upload
-  const handleFileUpload = (e) => {
+  const handleFileUpload = useCallback((e) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -77,28 +115,29 @@ export default function App() {
       };
       reader.readAsText(file);
     }
-  };
+  }, []);
 
   // Download file
-  const handleDownload = () => {
+  const handleDownload = useCallback(() => {
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.download = '促销预算管理.md';
     link.click();
-  };
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  }, [markdown]);
 
   // Custom parser to split Mermaid code blocks from markdown
-  const renderMarkdownWithMermaid = (mdContent) => {
-    let contentToParse = mdContent;
-
+  const renderedContent = useMemo(() => {
+    const mdContent = markdown;
     const blocks = [];
     const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
     let lastIndex = 0;
     let match;
 
-    while ((match = mermaidRegex.exec(contentToParse)) !== null) {
-      const textBefore = contentToParse.substring(lastIndex, match.index);
+    while ((match = mermaidRegex.exec(mdContent)) !== null) {
+      const textBefore = mdContent.substring(lastIndex, match.index);
       if (textBefore) {
         blocks.push({ type: 'markdown', content: textBefore });
       }
@@ -106,7 +145,7 @@ export default function App() {
       lastIndex = match.index + match[0].length;
     }
 
-    const remainingText = contentToParse.substring(lastIndex);
+    const remainingText = mdContent.substring(lastIndex);
     if (remainingText) {
       blocks.push({ type: 'markdown', content: remainingText });
     }
@@ -136,7 +175,7 @@ export default function App() {
           htmlStr = htmlStr.replace('[toc]', tocHtml);
         }
 
-        const parsedHtml = marked.parse(htmlStr);
+        const parsedHtml = DOMPurify.sanitize(marked.parse(htmlStr));
 
         return (
           <div
@@ -147,7 +186,7 @@ export default function App() {
         );
       }
     });
-  };
+  }, [markdown, isDark, headings]);
 
   return (
     <div className="app-container">
@@ -252,7 +291,7 @@ export default function App() {
           {/* Preview Pane (Shown in Read & Split mode) */}
           {(viewMode === 'read' || viewMode === 'split') && (
             <div className="preview-pane" ref={previewRef}>
-              {renderMarkdownWithMermaid(markdown)}
+              {renderedContent}
             </div>
           )}
         </main>

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 
 export const MermaidViewer = ({ chartCode, isDark }) => {
-  const containerRef = useRef(null);
   const [svgContent, setSvgContent] = useState('');
   const [renderError, setRenderError] = useState(null);
   const idRef = useRef(`mermaid-${Math.random().toString(36).substring(2, 9)}`);
@@ -22,7 +21,7 @@ export const MermaidViewer = ({ chartCode, isDark }) => {
         mermaid.initialize({
           startOnLoad: false,
           theme: isDark ? 'dark' : 'default',
-          securityLevel: 'loose',
+          securityLevel: 'strict',
           fontFamily: '"Inter", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif',
           flowchart: {
             htmlLabels: false,
@@ -66,7 +65,6 @@ export const MermaidViewer = ({ chartCode, isDark }) => {
         </div>
       ) : (
         <div
-          ref={containerRef}
           className="mermaid-svg-container"
           dangerouslySetInnerHTML={{ __html: svgContent }}
         />

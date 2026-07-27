@@ -1,5 +1,5 @@
 import React from 'react';
-import { ListTree, ChevronRight, Hash, Bookmark } from 'lucide-react';
+import { ListTree } from 'lucide-react';
 
 export const SidebarToc = ({ headings, activeId, onHeadingClick, isCollapsed }) => {
   return (
